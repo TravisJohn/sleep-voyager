@@ -15,6 +15,8 @@ Sleep Voyager is a mobile-first AR-style astronomy and bedtime exploration MVP. 
 - Eight beginner constellations with linework drawn between projected catalogue stars: Orion, Crux, Scorpius, Canis Major, Centaurus, Carina, Lyra, and Cygnus
 - Tappable discovery cards with real/demo status, science, fun facts, saving, and bedtime entry
 - Tonight’s Sky view with visible solar-system objects, visible bright stars, a beginner constellation suggestion, and a simple best target
+- Persisted Sky Detail levels from Calm through Full for controlling live overlay density
+- Focus Area snapshot with a clean, sortable list of on-screen and near-centre objects
 - Text-only, local-template Bedtime Universe dream voyages
 - Saved Sky Moments stored locally on the device
 - Mock Summer Triangle fallback when location is unavailable
@@ -55,9 +57,15 @@ Initial **Waiting for permission** states are expected before **Allow & continue
 
 Raw orientation readings are retained for debugging. The projected sky uses a lightweight low-pass smoothed reading to reduce jitter. Align Sky adds a manual heading offset in 5-degree steps; the offset is stored in local storage and can be reset from the calibration panel.
 
+## Sky Detail and Focus Area
+
+Sky Detail defaults to **3 Guided** and is stored in local storage. **1 Calm** keeps only essential markers, **2 Simple** adds the brightest stars, **3 Guided** adds the primary bright-star set and beginner constellation linework, **4 Explorer** adds fainter catalogue stars, and **5 Full** displays every curated object.
+
+Focus Area captures the objects on screen or close to the current view centre when its button is tapped. The captured list remains stable while camera, location, and orientation sensors continue updating behind the panel. On-screen objects sort first, followed by distance from the centre and then brightness or object importance. Learn opens the existing discovery card and Save stores the object in Saved Moments.
+
 ## Current projection limits
 
-The projection is intentionally simple. Heading controls horizontal placement and device beta estimates the centre altitude using fixed 80 by 70 degree field-of-view values. It does not yet calibrate camera optics, screen rotation, magnetic declination, or all device-axis differences. Without orientation data, a limited set of real objects is arranged across a fallback arc and is not aligned to the camera; real constellation lines are not drawn in that state.
+The projection is intentionally simple. Heading controls horizontal placement and device beta estimates the centre altitude using fixed 80 by 70 degree field-of-view values. It does not yet calibrate camera optics, screen rotation, magnetic declination, or all device-axis differences. Without orientation data, a limited set of real objects is arranged across a fallback arc and is not aligned to the camera; real constellation lines are not drawn in that state. Focus Area is the MVP alternative to pinch or camera zoom; a dedicated zoomable star-map mode can come later.
 
 ## Run locally
 
@@ -174,6 +182,7 @@ npm run preview
 - The 30-star catalogue and eight beginner patterns are curated rather than exhaustive.
 - Constellation line segments are learning aids, not official boundaries or complete artwork.
 - Camera alignment is approximate and requires orientation access.
+- Focus Area is a captured list, not optical zoom or a zoomable star map.
 - Tonight’s Sky reports current horizon status but does not calculate rise/set times yet.
 - Browser compass conventions, magnetic interference, camera optics, and device axes vary.
 - The permission flow continues into a demo experience if some device capabilities are unavailable.
@@ -183,6 +192,7 @@ npm run preview
 - Expand to a larger star catalogue after validating mobile overlay density and performance.
 - Add selected deep-space objects such as clusters, nebulae, and galaxies.
 - Add black holes as clearly framed voyage destinations rather than visible sky markers.
+- Add a true zoomable star-map mode after mobile projection and gesture behavior are validated.
 - Evaluate Expo/native delivery for more consistent sensors and AR behavior.
 - Add voice narration through a secure backend.
 - Generate personalized Bedtime Universe stories through a secure backend only; never place AI API keys in the client.

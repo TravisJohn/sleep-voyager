@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { BedtimeUniversePanel } from './components/BedtimeUniversePanel'
 import { DiscoveryCard } from './components/DiscoveryCard'
+import { FocusAreaPanel } from './components/FocusAreaPanel'
+import type { FocusAreaEntry } from './components/FocusAreaPanel'
 import { SavedMomentsPanel } from './components/SavedMomentsPanel'
 import { TonightsSkyPanel } from './components/TonightsSkyPanel'
 import { mockConstellationObjects } from './data/mockSky'
@@ -24,6 +26,16 @@ type SkyPortalState = ReturnType<typeof useSkyPortalState>
 type ProjectedObject = CelestialObject & { position: SkyPosition }
 type QualityLevel = SensorStatus
 type ConstellationLinework = { constellation: Constellation; path: string; screenX: number; screenY: number }
+type SkyDetailLevel = 1 | 2 | 3 | 4 | 5
+
+const skyDetailStorageKey = 'sleep-voyager-sky-detail'
+const skyDetailOptions: Array<{ level: SkyDetailLevel; label: string; description: string }> = [
+  { level: 1, label: 'Calm', description: 'Essential markers only' },
+  { level: 2, label: 'Simple', description: 'Add the brightest stars' },
+  { level: 3, label: 'Guided', description: 'Bright stars and beginner patterns' },
+  { level: 4, label: 'Explorer', description: 'More stars and full guidance' },
+  { level: 5, label: 'Full', description: 'Every curated object' },
+]
 
 const fieldTests = [
   { id: 'camera', label: 'Camera starts successfully' },
@@ -166,6 +178,9 @@ function SkyPortal({ sensors, onExit }: { sensors: SkyPortalState; onExit: () =>
   const [showFieldTest, setShowFieldTest] = useState(false)
   const [showTonight, setShowTonight] = useState(false)
   const [showSavedMoments, setShowSavedMoments] = useState(false)
+  const [showSkyDetail, setShowSkyDetail] = useState(false)
+  const [skyDetail, setSkyDetail] = useState<SkyDetailLevel>(readSkyDetail)
+  const [focusAreaSnapshot, setFocusAreaSnapshot] = useState<FocusAreaEntry[] | null>(null)
   const [bedtimeObject, setBedtimeObject] = useState<CelestialObject | null>(null)
   const [savedObjectIds, setSavedObjectIds] = useState<Set<string>>(() => new Set())
   const [completedFieldTests, setCompletedFieldTests] = useState<Set<string>>(() => new Set())
@@ -223,6 +238,10 @@ function SkyPortal({ sensors, onExit }: { sensors: SkyPortalState; onExit: () =>
 
   const selectedObject = (hasRealSky ? calculatedObjects : projectedObjects).find((object) => object.id === selected)
   const visibleProjectedObjects = projectedObjects.filter((object) => object.position.isVisible)
+  const overlayProjectedObjects = useMemo(
+    () => visibleProjectedObjects.filter((object) => showAtSkyDetail(object, skyDetail)),
+    [skyDetail, visibleProjectedObjects],
+  )
   const defaultBedtimeObject = selectedObject
     ?? solarSystemObjects.find((object) => object.id === 'moon')
     ?? projectedObjects[0]
@@ -234,9 +253,9 @@ function SkyPortal({ sensors, onExit }: { sensors: SkyPortalState; onExit: () =>
     ? `M${vega.screenX} ${vega.screenY} L${altair.screenX} ${altair.screenY} M${vega.screenX} ${vega.screenY} L${deneb.screenX} ${deneb.screenY} M${deneb.screenX} ${deneb.screenY} L${altair.screenX} ${altair.screenY}`
     : ''
   const realConstellationLinework = useMemo<ConstellationLinework[]>(() => {
-    if (!hasRealSky || reading.orientationStatus !== 'ready') return []
+    if (!hasRealSky || reading.orientationStatus !== 'ready' || skyDetail < 3) return []
     const starPositions = new Map(
-      projectedObjects
+      overlayProjectedObjects
         .filter((object) => object.type === 'star' && object.source === 'calculated')
         .map((object) => [object.id, object.position]),
     )
@@ -257,7 +276,63 @@ function SkyPortal({ sensors, onExit }: { sensors: SkyPortalState; onExit: () =>
         screenY: points.reduce((sum, point) => sum + point.screenY, 0) / points.length,
       }]
     })
+  }, [constellationObjects, hasRealSky, overlayProjectedObjects, reading.orientationStatus, skyDetail])
+  const focusConstellations = useMemo<ProjectedObject[]>(() => {
+    if (!hasRealSky || reading.orientationStatus !== 'ready') return []
+    const starPositions = new Map(
+      projectedObjects
+        .filter((object) => object.type === 'star' && object.source === 'calculated')
+        .map((object) => [object.id, object.position]),
+    )
+
+    return constellationObjects.flatMap((constellation) => {
+      const nearbyMembers = constellation.starIds.flatMap((id) => {
+        const position = starPositions.get(id)
+        return position && distanceFromViewCenter(position) <= 90 ? [position] : []
+      })
+      if (nearbyMembers.length < 2) return []
+      const onScreenMembers = nearbyMembers.filter((position) => position.isVisible)
+
+      return [{
+        ...constellation,
+        position: {
+          altitude: constellation.altitude,
+          azimuth: constellation.azimuth,
+          screenX: nearbyMembers.reduce((sum, position) => sum + position.screenX, 0) / nearbyMembers.length,
+          screenY: nearbyMembers.reduce((sum, position) => sum + position.screenY, 0) / nearbyMembers.length,
+          isVisible: onScreenMembers.length >= 2,
+        },
+      }]
+    })
   }, [constellationObjects, hasRealSky, projectedObjects, reading.orientationStatus])
+  const focusAreaCandidates = useMemo<FocusAreaEntry[]>(() => (
+    [...projectedObjects, ...focusConstellations]
+      .map((entry) => ({
+        object: entry,
+        onScreen: entry.position.isVisible,
+        distanceFromCenter: distanceFromViewCenter(entry.position),
+      }))
+      .filter((entry) => entry.onScreen || entry.distanceFromCenter <= 90)
+      .sort(compareFocusAreaEntries)
+      .slice(0, 18)
+  ), [focusConstellations, projectedObjects])
+
+  const chooseSkyDetail = (level: SkyDetailLevel) => {
+    setSkyDetail(level)
+    storeSkyDetail(level)
+    setShowSkyDetail(false)
+  }
+
+  const openFocusArea = () => {
+    setFocusAreaSnapshot(focusAreaCandidates.map((entry) => ({ ...entry })))
+    setSelected(null)
+    setShowSkyDetail(false)
+    setShowDebug(false)
+    setShowAlignSky(false)
+    setShowFieldTest(false)
+    setShowTonight(false)
+    setShowSavedMoments(false)
+  }
 
   const fallbackMessage = sensors.camera.status === 'denied'
     ? 'Camera access is off · Showing demo sky'
@@ -284,6 +359,8 @@ function SkyPortal({ sensors, onExit }: { sensors: SkyPortalState; onExit: () =>
             setShowFieldTest(false)
             setShowTonight(false)
             setShowSavedMoments(false)
+            setShowSkyDetail(false)
+            setFocusAreaSnapshot(null)
           }}
           aria-expanded={showDebug || showFieldTest}
         >Debug</button>
@@ -312,9 +389,37 @@ function SkyPortal({ sensors, onExit }: { sensors: SkyPortalState; onExit: () =>
         {hasRealSky && reading.orientationStatus !== 'ready' && <span>For accurate alignment, enable motion/orientation access.</span>}
       </div>
       <SensorQualityIndicator reading={reading} hasRealSky={hasRealSky} />
+      <div className="sky-tools" aria-label="Sky view controls">
+        <button
+          className={showSkyDetail ? 'active' : ''}
+          onClick={() => {
+            setShowSkyDetail((visible) => !visible)
+            setFocusAreaSnapshot(null)
+          }}
+          aria-expanded={showSkyDetail}
+        >
+          <span>Detail {skyDetail}</span><small>{skyDetailLabel(skyDetail)}</small>
+        </button>
+        <button onClick={openFocusArea}><span>◎ Focus Area</span><small>Sky list</small></button>
+      </div>
+      {showSkyDetail && (
+        <aside className="sky-detail-menu" aria-label="Choose Sky Detail level">
+          <div><small>SKY DETAIL</small><strong>Choose overlay density</strong></div>
+          {skyDetailOptions.map((option) => (
+            <button
+              key={option.level}
+              className={skyDetail === option.level ? 'selected' : ''}
+              onClick={() => chooseSkyDetail(option.level)}
+              aria-pressed={skyDetail === option.level}
+            >
+              <b>{option.level}</b><span>{option.label}<small>{option.description}</small></span>{skyDetail === option.level && <i>✓</i>}
+            </button>
+          ))}
+        </aside>
+      )}
 
       <section className="sky-overlay" aria-label="Interactive sky map">
-        {!hasRealSky && (
+        {!hasRealSky && skyDetail >= 3 && (
           <svg className="constellation" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
             <path d={constellationPath} />
           </svg>
@@ -324,7 +429,7 @@ function SkyPortal({ sensors, onExit }: { sensors: SkyPortalState; onExit: () =>
             {realConstellationLinework.map(({ constellation, path }) => <path key={constellation.id} d={path} />)}
           </svg>
         )}
-        {visibleProjectedObjects.map((object) => (
+        {overlayProjectedObjects.map((object) => (
           <button
             key={object.id}
             className={`sky-object ${object.source === 'calculated' ? 'real-object' : 'mock-object'} object-${object.type} ${selected === object.id ? 'selected' : ''}`}
@@ -348,8 +453,8 @@ function SkyPortal({ sensors, onExit }: { sensors: SkyPortalState; onExit: () =>
             {constellation.name}<small>REAL CONSTELLATION</small>
           </button>
         ))}
-        {!hasRealSky && <div className="constellation-name">THE SUMMER TRIANGLE<small>DEMO ASTERISM</small></div>}
-        {hasRealSky && visibleProjectedObjects.length === 0 && (
+        {!hasRealSky && skyDetail >= 3 && <div className="constellation-name">THE SUMMER TRIANGLE<small>DEMO ASTERISM</small></div>}
+        {hasRealSky && overlayProjectedObjects.length === 0 && (
           <div className="sky-empty-state">No curated objects are in this view.<small>Move slowly, or check again as the sky changes.</small></div>
         )}
       </section>
@@ -391,6 +496,22 @@ function SkyPortal({ sensors, onExit }: { sensors: SkyPortalState; onExit: () =>
 
       {showSavedMoments && <SavedMomentsPanel moments={moments} onClose={() => setShowSavedMoments(false)} onRemove={removeMoment} />}
 
+      {focusAreaSnapshot && (
+        <FocusAreaPanel
+          entries={focusAreaSnapshot}
+          savedObjectIds={savedObjectIds}
+          onClose={() => setFocusAreaSnapshot(null)}
+          onLearn={(object) => {
+            setSelected(object.id)
+            setFocusAreaSnapshot(null)
+          }}
+          onSave={(object) => {
+            saveMoment(object)
+            setSavedObjectIds((current) => new Set(current).add(object.id))
+          }}
+        />
+      )}
+
       {showAlignSky && (
         <aside className="align-sky-panel" aria-label="Manual sky alignment">
           <div className="align-heading"><div><small>CALIBRATION</small><h2>Align sky</h2></div><strong>{formatOffset(reading.headingOffset)}°</strong></div>
@@ -429,6 +550,8 @@ function SkyPortal({ sensors, onExit }: { sensors: SkyPortalState; onExit: () =>
             setShowFieldTest(false)
             setShowTonight(false)
             setShowSavedMoments(false)
+            setShowSkyDetail(false)
+            setFocusAreaSnapshot(null)
           }}
           aria-expanded={showAlignSky}
         ><span>⌖</span><small>Align sky</small></button>
@@ -440,6 +563,8 @@ function SkyPortal({ sensors, onExit }: { sensors: SkyPortalState; onExit: () =>
             setShowSavedMoments(false)
             setShowAlignSky(false)
             setShowFieldTest(false)
+            setShowSkyDetail(false)
+            setFocusAreaSnapshot(null)
           }}
         ><i>✦</i><small>Tonight</small></button>
         <button
@@ -448,6 +573,8 @@ function SkyPortal({ sensors, onExit }: { sensors: SkyPortalState; onExit: () =>
             setShowTonight(false)
             setShowSavedMoments(false)
             setShowAlignSky(false)
+            setShowSkyDetail(false)
+            setFocusAreaSnapshot(null)
             setBedtimeObject(defaultBedtimeObject)
           }}
           disabled={!defaultBedtimeObject}
@@ -493,6 +620,66 @@ function qualityLabel(level: QualityLevel) {
 
 function formatOffset(value: number) {
   return value > 0 ? `+${value}` : String(value)
+}
+
+function skyDetailLabel(level: SkyDetailLevel) {
+  return skyDetailOptions.find((option) => option.level === level)?.label ?? 'Guided'
+}
+
+function showAtSkyDetail(object: CelestialObject, level: SkyDetailLevel) {
+  if (object.type !== 'star') return true
+  const magnitude = 'apparentMagnitude' in object && typeof object.apparentMagnitude === 'number'
+    ? object.apparentMagnitude
+    : 99
+
+  if (object.source === 'mock') {
+    if (level === 1) return magnitude <= .1
+    if (level === 2) return magnitude <= 1
+    return true
+  }
+  if (level === 1) return false
+  if (level === 2) return magnitude <= .5
+  if (level === 3) return magnitude <= 1.75
+  if (level === 4) return magnitude <= 2.8
+  return true
+}
+
+function distanceFromViewCenter(position: Pick<SkyPosition, 'screenX' | 'screenY'>) {
+  return Math.hypot(position.screenX - 50, position.screenY - 50)
+}
+
+function compareFocusAreaEntries(left: FocusAreaEntry, right: FocusAreaEntry) {
+  if (left.onScreen !== right.onScreen) return left.onScreen ? -1 : 1
+  const distanceDifference = left.distanceFromCenter - right.distanceFromCenter
+  if (Math.abs(distanceDifference) > .1) return distanceDifference
+  const importanceDifference = focusObjectImportance(left.object) - focusObjectImportance(right.object)
+  return importanceDifference || left.object.name.localeCompare(right.object.name)
+}
+
+function focusObjectImportance(object: CelestialObject) {
+  if (object.type === 'moon') return -100
+  if (object.type === 'sun') return -90
+  if (object.type === 'planet') return -80
+  if (object.type === 'constellation') return -40
+  if ('apparentMagnitude' in object && typeof object.apparentMagnitude === 'number') return object.apparentMagnitude
+  return 20
+}
+
+function readSkyDetail(): SkyDetailLevel {
+  try {
+    const value = Number(window.localStorage.getItem(skyDetailStorageKey))
+    return value >= 1 && value <= 5 && Number.isInteger(value) ? value as SkyDetailLevel : 3
+  } catch {
+    return 3
+  }
+}
+
+function storeSkyDetail(level: SkyDetailLevel) {
+  try {
+    window.localStorage.setItem(skyDetailStorageKey, String(level))
+  } catch {
+    // The preference remains in React state when storage is unavailable.
+  }
 }
 
 function comparePortalPriority(left: CelestialObject, right: CelestialObject) {
