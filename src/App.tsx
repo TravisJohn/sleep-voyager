@@ -7,6 +7,8 @@ import { mockConstellationObjects } from './data/mockSky'
 import { useSavedSkyMoments } from './hooks/useSavedSkyMoments'
 import { useSkyPortalState } from './hooks/useSkyPortalState'
 import {
+  getRealBeginnerConstellations,
+  getRealBrightStars,
   getRealSolarSystemObjects,
   getVisibleSkyObjects,
   projectAltAzToScreen,
@@ -14,13 +16,14 @@ import {
   SKY_PORTAL_FIELD_OF_VIEW,
 } from './lib/astronomy'
 import { buildFieldTestSnapshot, copyTextToClipboard } from './lib/fieldTest'
-import type { CelestialObject, SkyPosition } from './types/sky'
+import type { CelestialObject, Constellation, SkyPosition, Star } from './types/sky'
 import type { SensorStatus } from './types/sensors'
 
 type Screen = 'landing' | 'permissions' | 'portal'
 type SkyPortalState = ReturnType<typeof useSkyPortalState>
 type ProjectedObject = CelestialObject & { position: SkyPosition }
 type QualityLevel = SensorStatus
+type ConstellationLinework = { constellation: Constellation; path: string; screenX: number; screenY: number }
 
 const fieldTests = [
   { id: 'camera', label: 'Camera starts successfully' },
@@ -30,7 +33,7 @@ const fieldTests = [
   { id: 'tilt', label: 'Overlay moves smoothly when phone tilts up/down' },
   { id: 'align', label: 'Align Sky offset works' },
   { id: 'reset', label: 'Reset calibration works' },
-  { id: 'real-objects', label: 'Real solar-system objects appear when location is available' },
+  { id: 'real-objects', label: 'Real solar-system objects and bright stars appear with location' },
   { id: 'fallback', label: 'Demo fallback appears when sensors are unavailable' },
 ] as const
 
@@ -183,15 +186,30 @@ function SkyPortal({ sensors, onExit }: { sensors: SkyPortalState; onExit: () =>
     () => hasRealSky ? getRealSolarSystemObjects(reading) : [],
     [hasRealSky, reading],
   )
+  const brightStarObjects = useMemo(
+    () => hasRealSky ? getRealBrightStars(reading) : [],
+    [hasRealSky, reading],
+  )
+  const constellationObjects = useMemo(
+    () => getRealBeginnerConstellations(brightStarObjects),
+    [brightStarObjects],
+  )
+  const calculatedObjects = useMemo(
+    () => [...solarSystemObjects, ...brightStarObjects, ...constellationObjects],
+    [brightStarObjects, constellationObjects, solarSystemObjects],
+  )
   const projectedObjects = useMemo(() => {
     if (hasRealSky) {
-      const visibleObjects = getVisibleSkyObjects(solarSystemObjects)
-      return visibleObjects.map((object, index) => ({
+      const visibleObjects = getVisibleSkyObjects([...solarSystemObjects, ...brightStarObjects])
+      const portalObjects = reading.orientationStatus === 'ready'
+        ? visibleObjects
+        : [...visibleObjects].sort(comparePortalPriority).slice(0, 10)
+      return portalObjects.map((object, index) => ({
         ...object,
         position: projectAltAzToScreen(object, {
           orientation: reading.orientationStatus === 'ready' ? reading.orientation : null,
           demoIndex: index,
-          demoCount: visibleObjects.length,
+          demoCount: portalObjects.length,
         }),
       }))
     }
@@ -201,9 +219,9 @@ function SkyPortal({ sensors, onExit }: { sensors: SkyPortalState; onExit: () =>
       ...object,
       position: projectMockConstellationObject(object, demoPhase),
     }))
-  }, [hasRealSky, reading, solarSystemObjects])
+  }, [brightStarObjects, hasRealSky, reading, solarSystemObjects])
 
-  const selectedObject = (hasRealSky ? solarSystemObjects : projectedObjects).find((object) => object.id === selected)
+  const selectedObject = (hasRealSky ? calculatedObjects : projectedObjects).find((object) => object.id === selected)
   const visibleProjectedObjects = projectedObjects.filter((object) => object.position.isVisible)
   const defaultBedtimeObject = selectedObject
     ?? solarSystemObjects.find((object) => object.id === 'moon')
@@ -215,6 +233,31 @@ function SkyPortal({ sensors, onExit }: { sensors: SkyPortalState; onExit: () =>
   const constellationPath = vega && deneb && altair
     ? `M${vega.screenX} ${vega.screenY} L${altair.screenX} ${altair.screenY} M${vega.screenX} ${vega.screenY} L${deneb.screenX} ${deneb.screenY} M${deneb.screenX} ${deneb.screenY} L${altair.screenX} ${altair.screenY}`
     : ''
+  const realConstellationLinework = useMemo<ConstellationLinework[]>(() => {
+    if (!hasRealSky || reading.orientationStatus !== 'ready') return []
+    const starPositions = new Map(
+      projectedObjects
+        .filter((object) => object.type === 'star' && object.source === 'calculated')
+        .map((object) => [object.id, object.position]),
+    )
+
+    return constellationObjects.flatMap((constellation) => {
+      const drawableSegments = constellation.lines.flatMap(([fromId, toId]) => {
+        const from = starPositions.get(fromId)
+        const to = starPositions.get(toId)
+        return from?.isVisible && to?.isVisible ? [{ from, to }] : []
+      })
+      if (drawableSegments.length === 0) return []
+      const points = drawableSegments.flatMap((segment) => [segment.from, segment.to])
+
+      return [{
+        constellation,
+        path: drawableSegments.map(({ from, to }) => `M${from.screenX} ${from.screenY} L${to.screenX} ${to.screenY}`).join(' '),
+        screenX: points.reduce((sum, point) => sum + point.screenX, 0) / points.length,
+        screenY: points.reduce((sum, point) => sum + point.screenY, 0) / points.length,
+      }]
+    })
+  }, [constellationObjects, hasRealSky, projectedObjects, reading.orientationStatus])
 
   const fallbackMessage = sensors.camera.status === 'denied'
     ? 'Camera access is off · Showing demo sky'
@@ -264,8 +307,8 @@ function SkyPortal({ sensors, onExit }: { sensors: SkyPortalState; onExit: () =>
       <div className="sky-mode-copy">
         <span>Move your phone slowly to explore the hidden sky.</span>
         {hasRealSky
-          ? <span>Real sky objects are based on your current location and time.</span>
-          : <span>Demo constellations are placeholders until the star catalogue is added.</span>}
+          ? <span>Real planets and bright stars are based on your current location and time.</span>
+          : <span>Demo placeholders keep the portal explorable until location is available.</span>}
         {hasRealSky && reading.orientationStatus !== 'ready' && <span>For accurate alignment, enable motion/orientation access.</span>}
       </div>
       <SensorQualityIndicator reading={reading} hasRealSky={hasRealSky} />
@@ -276,6 +319,11 @@ function SkyPortal({ sensors, onExit }: { sensors: SkyPortalState; onExit: () =>
             <path d={constellationPath} />
           </svg>
         )}
+        {realConstellationLinework.length > 0 && (
+          <svg className="constellation real-constellation" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+            {realConstellationLinework.map(({ constellation, path }) => <path key={constellation.id} d={path} />)}
+          </svg>
+        )}
         {visibleProjectedObjects.map((object) => (
           <button
             key={object.id}
@@ -284,10 +332,20 @@ function SkyPortal({ sensors, onExit }: { sensors: SkyPortalState; onExit: () =>
             onClick={() => setSelected(object.id)}
             aria-label={`View ${object.name}`}
           >
-            <i style={object.source === 'mock' ? { width: object.id === 'deneb' ? 4 : 5, height: object.id === 'deneb' ? 4 : 5 } : undefined}>
-              {object.source === 'calculated' ? objectSymbol(object.type) : ''}
+            <i style={objectMarkerStyle(object)}>
+              {object.source === 'calculated' && object.type !== 'star' ? objectSymbol(object.type) : ''}
             </i>
-            <span>{object.name}<small>{object.source === 'calculated' ? 'CALCULATED' : 'DEMO'}</small></span>
+            <span>{object.name}<small>{objectOverlayBadge(object)}</small></span>
+          </button>
+        ))}
+        {realConstellationLinework.map(({ constellation, screenX, screenY }) => (
+          <button
+            key={constellation.id}
+            className={`real-constellation-name ${selected === constellation.id ? 'selected' : ''}`}
+            style={{ left: `${screenX}%`, top: `${screenY}%` }}
+            onClick={() => setSelected(constellation.id)}
+          >
+            {constellation.name}<small>REAL CONSTELLATION</small>
           </button>
         ))}
         {!hasRealSky && <div className="constellation-name">THE SUMMER TRIANGLE<small>DEMO ASTERISM</small></div>}
@@ -316,7 +374,8 @@ function SkyPortal({ sensors, onExit }: { sensors: SkyPortalState; onExit: () =>
 
       {showTonight && (
         <TonightsSkyPanel
-          objects={solarSystemObjects}
+          objects={[...solarSystemObjects, ...brightStarObjects]}
+          constellations={constellationObjects}
           savedCount={moments.length}
           onClose={() => setShowTonight(false)}
           onSelect={(object) => {
@@ -436,10 +495,45 @@ function formatOffset(value: number) {
   return value > 0 ? `+${value}` : String(value)
 }
 
-function objectSymbol(type: 'sun' | 'moon' | 'planet' | 'star') {
+function comparePortalPriority(left: CelestialObject, right: CelestialObject) {
+  return portalPriority(left) - portalPriority(right)
+}
+
+function portalPriority(object: CelestialObject) {
+  if (object.type === 'moon') return -4
+  if (object.type === 'planet') return -3
+  if (object.type === 'sun') return -2
+  if (isCalculatedStar(object)) return object.apparentMagnitude
+  return 10
+}
+
+function objectMarkerStyle(object: CelestialObject) {
+  if (object.source === 'mock') {
+    const size = object.id === 'deneb' ? 4 : 5
+    return { width: size, height: size }
+  }
+  if (isCalculatedStar(object)) {
+    const size = Math.max(3.5, Math.min(7, 7 - (object.apparentMagnitude + 1.5) * .75))
+    return { width: size, height: size }
+  }
+  return undefined
+}
+
+function objectOverlayBadge(object: CelestialObject) {
+  if (object.source === 'mock') return 'DEMO PLACEHOLDER'
+  if (object.type === 'star') return 'REAL STAR'
+  return 'CALCULATED'
+}
+
+function isCalculatedStar(object: CelestialObject): object is Star {
+  return object.type === 'star' && object.source === 'calculated' && 'apparentMagnitude' in object
+}
+
+function objectSymbol(type: CelestialObject['type']) {
   if (type === 'sun') return '☀'
   if (type === 'moon') return '☾'
   if (type === 'planet') return '●'
+  if (type === 'constellation') return '✧'
   return '✦'
 }
 

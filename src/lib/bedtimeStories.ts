@@ -8,7 +8,7 @@ export function createBedtimeStory(object: CelestialObject): BedtimeStory {
 
   return {
     title: `The quiet voyage to ${object.name}`,
-    subtitle: `A dream voyage inspired by real ${object.type === 'star' ? 'stellar' : 'solar-system'} science`,
+    subtitle: `A dream voyage inspired by real ${scienceFamily(object.type)} science`,
     paragraphs: [
       `Tonight, your room becomes the launch deck. Beyond the window, beyond the ceiling, ${object.name} waits quietly in the sky. The lights of your imaginary ship soften, and the voyage begins with one slow breath.`,
       `In dream-voyage mode, distance feels as light as a blanket. Your fictional ship glides through a sea of deep blue and silver, carrying no hurry at all. This part is imagination — not a real travel time or mission plan.`,
@@ -17,4 +17,10 @@ export function createBedtimeStory(object: CelestialObject): BedtimeStory {
     ],
     scienceAnchor: object.scienceNote,
   }
+}
+
+function scienceFamily(type: CelestialObject['type']) {
+  if (type === 'star') return 'stellar'
+  if (type === 'constellation') return 'sky-pattern'
+  return 'solar-system'
 }

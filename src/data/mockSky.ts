@@ -1,14 +1,12 @@
-import type { Constellation, Star } from '../types/sky'
+import type { DemoStar } from '../types/sky'
 
-export const mockConstellationObjects: Star[] = [
+export const mockConstellationObjects: DemoStar[] = [
   {
     id: 'vega',
     name: 'Vega',
     type: 'star',
     source: 'mock',
-    magnitude: 0.03,
-    distanceLightYears: 25,
-    spectralClass: 'A0V',
+    apparentMagnitude: 0.03,
     altitude: 56,
     azimuth: 36,
     visibility: 'above-horizon',
@@ -16,16 +14,14 @@ export const mockConstellationObjects: Star[] = [
     mockScreenPosition: { x: 24, y: 34 },
     description: 'One of the brightest stars in our night sky, Vega helped define the scale astronomers use to measure stellar brightness.',
     funFact: 'Vega was Earth’s northern pole star about 12,000 years ago.',
-    scienceNote: 'This position is a visual placeholder and is not calculated from a star catalogue yet.',
+    scienceNote: 'This is a visual placeholder used only when location is unavailable; its screen position is not calculated.',
   },
   {
     id: 'deneb',
     name: 'Deneb',
     type: 'star',
     source: 'mock',
-    magnitude: 1.25,
-    distanceLightYears: 2615,
-    spectralClass: 'A2Ia',
+    apparentMagnitude: 1.25,
     altitude: 64,
     azimuth: 105,
     visibility: 'above-horizon',
@@ -33,16 +29,14 @@ export const mockConstellationObjects: Star[] = [
     mockScreenPosition: { x: 70, y: 27 },
     description: 'A distant blue-white supergiant, Deneb shines across thousands of light-years to form the tail of Cygnus.',
     funFact: 'Deneb emits vastly more light than the Sun despite looking like a modest point from Earth.',
-    scienceNote: 'This position is a visual placeholder and is not calculated from a star catalogue yet.',
+    scienceNote: 'This is a visual placeholder used only when location is unavailable; its screen position is not calculated.',
   },
   {
     id: 'altair',
     name: 'Altair',
     type: 'star',
     source: 'mock',
-    magnitude: 0.77,
-    distanceLightYears: 16.7,
-    spectralClass: 'A7V',
+    apparentMagnitude: 0.77,
     altitude: 42,
     azimuth: 81,
     visibility: 'above-horizon',
@@ -50,11 +44,11 @@ export const mockConstellationObjects: Star[] = [
     mockScreenPosition: { x: 58, y: 60 },
     description: 'Altair is a nearby, rapidly spinning star whose equator bulges outward as it turns.',
     funFact: 'Altair completes a rotation in roughly nine hours.',
-    scienceNote: 'This position is a visual placeholder and is not calculated from a star catalogue yet.',
+    scienceNote: 'This is a visual placeholder used only when location is unavailable; its screen position is not calculated.',
   },
 ]
 
-export const mockSummerTriangle: Constellation = {
+export const mockSummerTriangle = {
   id: 'summer-triangle',
   name: 'The Summer Triangle',
   starIds: ['vega', 'deneb', 'altair'],

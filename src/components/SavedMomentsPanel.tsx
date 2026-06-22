@@ -10,7 +10,7 @@ export function SavedMomentsPanel({ moments, onClose, onRemove }: { moments: Sav
       ) : (
         <div className="saved-list">{moments.map((moment) => (
           <article key={moment.id}>
-            <div className="saved-symbol">{moment.objectType === 'moon' ? '☾' : moment.objectType === 'sun' ? '☀' : '✦'}</div>
+            <div className="saved-symbol">{savedGlyph(moment.objectType)}</div>
             <div><small>{new Date(moment.timestamp).toLocaleString()}</small><h3>{moment.title}</h3><p>{moment.objectName} · {moment.visibility === 'above-horizon' ? 'above horizon' : 'below horizon'}{moment.altitude === undefined ? '' : ` · ${moment.altitude.toFixed(1)}° alt`}</p></div>
             <button onClick={() => onRemove(moment.id)} aria-label={`Remove ${moment.title}`}>×</button>
           </article>
@@ -18,4 +18,12 @@ export function SavedMomentsPanel({ moments, onClose, onRemove }: { moments: Sav
       )}
     </aside>
   )
+}
+
+function savedGlyph(type: SavedSkyMoment['objectType']) {
+  if (type === 'moon') return '☾'
+  if (type === 'sun') return '☀'
+  if (type === 'planet') return '●'
+  if (type === 'constellation') return '✧'
+  return '✦'
 }

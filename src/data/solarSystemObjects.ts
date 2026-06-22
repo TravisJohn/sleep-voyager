@@ -4,7 +4,7 @@ import type { CelestialObjectType } from '../types/sky'
 export interface SolarSystemObjectDefinition {
   id: string
   name: string
-  type: Exclude<CelestialObjectType, 'star'>
+  type: Exclude<CelestialObjectType, 'star' | 'constellation'>
   astronomyBody: Body
   description: string
   funFact: string

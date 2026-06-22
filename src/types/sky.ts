@@ -1,7 +1,7 @@
 import type { Body } from 'astronomy-engine'
 import type { GeoCoordinates, OrientationReading, SensorStatus } from './sensors'
 
-export type CelestialObjectType = 'sun' | 'moon' | 'planet' | 'star'
+export type CelestialObjectType = 'sun' | 'moon' | 'planet' | 'star' | 'constellation'
 export type VisibilityStatus = 'above-horizon' | 'below-horizon'
 
 export interface SkyPosition {
@@ -34,10 +34,19 @@ export interface SolarSystemObject extends CelestialObject {
 
 export interface Star extends CelestialObject {
   type: 'star'
+  source: 'calculated'
+  commonName?: string
+  rightAscension: number
+  declination: number
+  apparentMagnitude: number
+  constellationAbbreviation: string
+  constellationName: string
+}
+
+export interface DemoStar extends CelestialObject {
+  type: 'star'
   source: 'mock'
-  magnitude: number
-  distanceLightYears: number
-  spectralClass: string
+  apparentMagnitude: number
   mockScreenPosition: { x: number; y: number }
 }
 
@@ -45,12 +54,15 @@ export interface Planet extends SolarSystemObject {
   type: 'planet'
 }
 
-export interface Constellation {
+export interface Constellation extends CelestialObject {
   id: string
   name: string
+  type: 'constellation'
+  source: 'calculated'
+  hemisphereRelevance: string
   starIds: string[]
   lines: Array<[string, string]>
-  mythology?: string
+  mythology: string
 }
 
 export interface SkyPortalReading {
