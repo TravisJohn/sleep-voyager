@@ -1,19 +1,30 @@
 # Sleep Voyager
 
-Initial mobile-first frontend foundation for an AR-style astronomy and bedtime exploration app.
+Sleep Voyager is a mobile-first AR-style astronomy and bedtime exploration MVP. Point a phone at the sky, ceiling, bedroom, or window and turn the camera view into a calm portal to nearby celestial objects.
 
-## Included
+> Turn your room into a window to the universe.
 
-- Landing screen and Bedtime Universe preview
+## Current MVP
+
+- Polished landing, permission, and Sky Portal experience
 - Camera, location, and orientation permission flow
-- Sky Portal prototype with live rear-camera video when available
+- Live rear-camera portal with heading calibration and smoothed motion
 - Graceful demo-sky fallback when camera access is unavailable
 - Real Sun, Moon, Mercury, Venus, Mars, Jupiter, and Saturn positions
-- Mock Summer Triangle fallback and tappable celestial object details
+- Tappable discovery cards with real/demo status, science, fun facts, saving, and bedtime entry
+- Tonight’s Sky view with visible and below-horizon objects
+- Text-only, local-template Bedtime Universe dream voyages
+- Saved Sky Moments stored locally on the device
+- Mock Summer Triangle fallback when location is unavailable
 - Reusable camera, geolocation, orientation, and sky-time sensor hooks
-- Sensor-driven projection with an automatic desktop demo mode
-- Optional in-portal sensor debug panel
+- Hidden Debug and 9-step Field Test tools
 - Responsive dark cosmic styling with no paid services or secrets
+
+## Real vs mocked
+
+**Real:** `astronomy-engine` calculates topocentric altitude, azimuth, and above/below-horizon status for the Sun, Moon, Mercury, Venus, Mars, Jupiter, and Saturn using the current time and location. Tonight’s Sky uses these same calculated records.
+
+**Mocked:** Vega, Deneb, Altair, and the Summer Triangle lines are visual demo placeholders used when location is unavailable. Their screen positions are not astronomy calculations. Bedtime Universe stories are local text templates: their science anchors are based on curated object facts, while spaceship travel is explicitly labelled as dream-voyage fiction.
 
 ## Astronomy calculations
 
@@ -57,6 +68,23 @@ npm run dev
 Open the local URL shown by Vite. Camera, location, and motion access require user permission.
 
 Physical phone testing generally requires HTTPS. Desktop `localhost` is treated as secure, but a phone opening Vite over a plain local-network IP may not receive camera or sensor permissions. Use an HTTPS-enabled local development URL or another trusted local-network setup that supports browser permissions.
+
+## Mobile release-candidate preview
+
+Build and start the fixed-port preview server:
+
+```bash
+npm run build
+npm run preview -- --host 0.0.0.0 --port 4173
+```
+
+In a second terminal, create the HTTPS Cloudflare tunnel:
+
+```bash
+npx cloudflared tunnel --url http://localhost:4173
+```
+
+Open the generated `https://...trycloudflare.com` URL in **Safari on iOS** or **Chrome on Android**. Allow camera, precise location, and motion/orientation when prompted. Keep both terminal processes running during the test.
 
 ## Field Testing
 
@@ -135,10 +163,21 @@ npm run build
 npm run preview
 ```
 
-## Scope notes
+## Known limitations
 
 - No backend, accounts, analytics, paid APIs, audio generation, or API keys are included.
-- Bedtime Universe is a preview only.
+- Bedtime Universe is local text only; there is no voice narration yet.
+- Saved Moments are local to one browser/device and are not synchronized.
 - Stars and constellations are not astronomically calculated yet.
 - Camera alignment is approximate and requires orientation access.
+- Tonight’s Sky reports current horizon status but does not calculate rise/set times yet.
+- Browser compass conventions, magnetic interference, camera optics, and device axes vary.
 - The permission flow continues into a demo experience if some device capabilities are unavailable.
+
+## Roadmap
+
+- Add a curated star catalogue.
+- Draw real constellation lines and labels.
+- Evaluate Expo/native delivery for more consistent sensors and AR behavior.
+- Add voice narration.
+- Generate personalized Bedtime Universe stories through a secure backend only; never place AI API keys in the client.

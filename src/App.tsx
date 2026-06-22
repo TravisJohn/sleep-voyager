@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { BedtimeUniversePanel } from './components/BedtimeUniversePanel'
+import { DiscoveryCard } from './components/DiscoveryCard'
+import { SavedMomentsPanel } from './components/SavedMomentsPanel'
+import { TonightsSkyPanel } from './components/TonightsSkyPanel'
 import { mockConstellationObjects } from './data/mockSky'
+import { useSavedSkyMoments } from './hooks/useSavedSkyMoments'
 import { useSkyPortalState } from './hooks/useSkyPortalState'
 import {
   getRealSolarSystemObjects,
@@ -65,7 +70,7 @@ function Landing({ onStart }: { onStart: () => void }) {
 
       <section className="bedtime-card">
         <div className="moon">☾</div>
-        <div><span className="coming-soon">COMING SOON</span><h2>Bedtime Universe</h2><p>Drift off to warm, narrated journeys across the cosmos.</p></div>
+        <div><span className="coming-soon">TEXT PREVIEW</span><h2>Bedtime Universe</h2><p>Drift into a calm, science-grounded story from the Sky Portal.</p></div>
         <span className="card-arrow">↗</span>
       </section>
     </main>
@@ -156,8 +161,13 @@ function SkyPortal({ sensors, onExit }: { sensors: SkyPortalState; onExit: () =>
   const [showDebug, setShowDebug] = useState(false)
   const [showAlignSky, setShowAlignSky] = useState(false)
   const [showFieldTest, setShowFieldTest] = useState(false)
+  const [showTonight, setShowTonight] = useState(false)
+  const [showSavedMoments, setShowSavedMoments] = useState(false)
+  const [bedtimeObject, setBedtimeObject] = useState<CelestialObject | null>(null)
+  const [savedObjectIds, setSavedObjectIds] = useState<Set<string>>(() => new Set())
   const [completedFieldTests, setCompletedFieldTests] = useState<Set<string>>(() => new Set())
   const [fieldTestNotes, setFieldTestNotes] = useState('')
+  const { moments, saveMoment, removeMoment } = useSavedSkyMoments()
   const { reading } = sensors
   const cameraReady = sensors.camera.status === 'ready' && sensors.camera.stream !== null
 
@@ -169,9 +179,13 @@ function SkyPortal({ sensors, onExit }: { sensors: SkyPortalState; onExit: () =>
   }, [sensors.camera.stream])
 
   const hasRealSky = reading.locationStatus === 'ready' && reading.coordinates !== null
+  const solarSystemObjects = useMemo(
+    () => hasRealSky ? getRealSolarSystemObjects(reading) : [],
+    [hasRealSky, reading],
+  )
   const projectedObjects = useMemo(() => {
     if (hasRealSky) {
-      const visibleObjects = getVisibleSkyObjects(getRealSolarSystemObjects(reading))
+      const visibleObjects = getVisibleSkyObjects(solarSystemObjects)
       return visibleObjects.map((object, index) => ({
         ...object,
         position: projectAltAzToScreen(object, {
@@ -187,10 +201,13 @@ function SkyPortal({ sensors, onExit }: { sensors: SkyPortalState; onExit: () =>
       ...object,
       position: projectMockConstellationObject(object, demoPhase),
     }))
-  }, [hasRealSky, reading])
+  }, [hasRealSky, reading, solarSystemObjects])
 
-  const selectedObject = projectedObjects.find((object) => object.id === selected)
+  const selectedObject = (hasRealSky ? solarSystemObjects : projectedObjects).find((object) => object.id === selected)
   const visibleProjectedObjects = projectedObjects.filter((object) => object.position.isVisible)
+  const defaultBedtimeObject = selectedObject
+    ?? solarSystemObjects.find((object) => object.id === 'moon')
+    ?? projectedObjects[0]
   const objectPositions = new Map(projectedObjects.map((object) => [object.id, object.position]))
   const vega = objectPositions.get('vega')
   const deneb = objectPositions.get('deneb')
@@ -222,6 +239,8 @@ function SkyPortal({ sensors, onExit }: { sensors: SkyPortalState; onExit: () =>
           onClick={() => {
             setShowDebug((visible) => !visible)
             setShowFieldTest(false)
+            setShowTonight(false)
+            setShowSavedMoments(false)
           }}
           aria-expanded={showDebug || showFieldTest}
         >Debug</button>
@@ -234,6 +253,8 @@ function SkyPortal({ sensors, onExit }: { sensors: SkyPortalState; onExit: () =>
           onOpenFieldTest={() => {
             setShowDebug(false)
             setShowAlignSky(false)
+            setShowTonight(false)
+            setShowSavedMoments(false)
             setShowFieldTest(true)
           }}
         />
@@ -276,26 +297,40 @@ function SkyPortal({ sensors, onExit }: { sensors: SkyPortalState; onExit: () =>
       </section>
 
       {selectedObject ? (
-        <article className="object-card">
-          <button className="card-close" onClick={() => setSelected(null)} aria-label="Close object details">×</button>
-          <div className="object-heading">
-            <div className={`object-orb object-orb-${selectedObject.type}`}>{selectedObject.source === 'calculated' ? objectSymbol(selectedObject.type) : '✦'}</div>
-            <div><span>{selectedObject.type.toUpperCase()} · {selectedObject.source === 'calculated' ? 'REAL POSITION' : 'DEMO POSITION'}</span><h2>{selectedObject.name}</h2></div>
-          </div>
-          {selectedObject.source === 'calculated' && (
-            <div className="coordinate-row">
-              <div><small>ALTITUDE</small><strong>{selectedObject.altitude.toFixed(1)}°</strong></div>
-              <div><small>AZIMUTH</small><strong>{selectedObject.azimuth.toFixed(1)}°</strong></div>
-              <div><small>STATUS</small><strong>{selectedObject.visibility === 'above-horizon' ? 'Visible' : 'Below horizon'}</strong></div>
-            </div>
-          )}
-          <p>{selectedObject.description}</p>
-          <p className="science-note"><small>SCIENCE NOTE</small>{selectedObject.scienceNote}</p>
-          <div className="fact-row"><div><small>FUN FACT</small><strong>{selectedObject.funFact}</strong></div></div>
-        </article>
+        <DiscoveryCard
+          object={selectedObject}
+          isSaved={savedObjectIds.has(selectedObject.id)}
+          onClose={() => setSelected(null)}
+          onSave={() => {
+            saveMoment(selectedObject)
+            setSavedObjectIds((current) => new Set(current).add(selectedObject.id))
+          }}
+          onStartBedtime={() => {
+            setBedtimeObject(selectedObject)
+            setSelected(null)
+          }}
+        />
       ) : (
         <div className="tap-hint"><span>✦</span> Tap a sky object to explore</div>
       )}
+
+      {showTonight && (
+        <TonightsSkyPanel
+          objects={solarSystemObjects}
+          savedCount={moments.length}
+          onClose={() => setShowTonight(false)}
+          onSelect={(object) => {
+            setSelected(object.id)
+            setShowTonight(false)
+          }}
+          onOpenSaved={() => {
+            setShowTonight(false)
+            setShowSavedMoments(true)
+          }}
+        />
+      )}
+
+      {showSavedMoments && <SavedMomentsPanel moments={moments} onClose={() => setShowSavedMoments(false)} onRemove={removeMoment} />}
 
       {showAlignSky && (
         <aside className="align-sky-panel" aria-label="Manual sky alignment">
@@ -333,12 +368,34 @@ function SkyPortal({ sensors, onExit }: { sensors: SkyPortalState; onExit: () =>
           onClick={() => {
             setShowAlignSky((visible) => !visible)
             setShowFieldTest(false)
+            setShowTonight(false)
+            setShowSavedMoments(false)
           }}
           aria-expanded={showAlignSky}
         ><span>⌖</span><small>Align sky</small></button>
-        <button className="scan-button" aria-label="Scan the sky"><i>✦</i></button>
-        <button><span>☾</span><small>Bedtime</small></button>
+        <button
+          className={`scan-button ${showTonight ? 'active' : ''}`}
+          aria-label="Open Tonight's Sky"
+          onClick={() => {
+            setShowTonight((visible) => !visible)
+            setShowSavedMoments(false)
+            setShowAlignSky(false)
+            setShowFieldTest(false)
+          }}
+        ><i>✦</i><small>Tonight</small></button>
+        <button
+          onClick={() => {
+            if (!defaultBedtimeObject) return
+            setShowTonight(false)
+            setShowSavedMoments(false)
+            setShowAlignSky(false)
+            setBedtimeObject(defaultBedtimeObject)
+          }}
+          disabled={!defaultBedtimeObject}
+        ><span>☾</span><small>Bedtime</small></button>
       </nav>
+
+      {bedtimeObject && <BedtimeUniversePanel object={bedtimeObject} onClose={() => setBedtimeObject(null)} />}
     </main>
   )
 }
